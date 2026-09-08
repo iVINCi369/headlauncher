@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Headscale</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{--bg:var(--tg-theme-bg-color,#fff);--fg:var(--tg-theme-text-color,#000);--hint:var(--tg-theme-hint-color,#888);
+--link:var(--tg-theme-link-color,#2481cc);--btn:var(--tg-theme-button-color,#2481cc);--btnfg:var(--tg-theme-button-text-color,#fff);
+--sec:var(--tg-theme-secondary-bg-color,#f0f0f0);--ok:#2ecc71;--bad:#e74c3c;--warn:#f39c12}
+*{box-sizing:border-box}body{margin:0;font:15px/1.4 -apple-system,system-ui,Roboto,sans-serif;background:var(--bg);color:var(--fg);padding-bottom:70px}
+header{position:sticky;top:0;background:var(--bg);z-index:5;border-bottom:1px solid var(--sec)}
+nav{display:flex;overflow-x:auto}nav button{flex:1;min-width:64px;padding:12px 6px;border:0;background:none;color:var(--hint);font-size:13px;border-bottom:2px solid transparent;white-space:nowrap}
+nav button.on{color:var(--link);border-color:var(--link);font-weight:600}
+main{padding:10px}
+.card{background:var(--sec);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.grow{flex:1;min-width:0}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--hint);flex:none}.dot.on{background:var(--ok)}
+.name{font-weight:600;word-break:break-all}.hint{color:var(--hint);font-size:12.5px;word-break:break-all}
+.tag{display:inline-block;background:var(--bg);border-radius:6px;padding:1px 6px;font-size:12px;margin:2px 3px 0 0}
+.acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+button.b{border:0;border-radius:8px;padding:7px 10px;background:var(--btn);color:var(--btnfg);font-size:13px}
+button.b.s{background:var(--bg);color:var(--fg);border:1px solid var(--hint)}button.b.d{background:var(--bad);color:#fff}
+button:disabled{opacity:.5}
+input,select,textarea{width:100%;padding:9px 10px;border-radius:8px;border:1px solid var(--hint);background:var(--bg);color:var(--fg);font-size:15px;margin:4px 0}
+label.chk{display:flex;align-items:center;gap:8px;margin:6px 0}label.chk input{width:auto;margin:0}
+pre{background:var(--bg);border-radius:8px;padding:8px;overflow-x:auto;font-size:12.5px;white-space:pre-wrap;word-break:break-all;margin:6px 0}
+.qr{display:block;margin:8px auto;max-width:240px;width:100%;border-radius:8px;background:#fff;padding:6px}
+.route{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:3px 0;font-size:13px}.route>span:first-of-type{word-break:break-all}.route .hint{flex:none;white-space:nowrap}.route input{width:auto;margin:0;flex:none}
+#toast{position:fixed;left:12px;right:12px;bottom:14px;background:#222;color:#fff;padding:10px 14px;border-radius:10px;font-size:14px;display:none;z-index:9}
+.empty{color:var(--hint);text-align:center;padding:24px}
+h3{margin:14px 0 6px;font-size:14px;color:var(--hint);text-transform:uppercase;letter-spacing:.04em}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+</style>
+</head>
+<body>
+<header><nav>
+<button data-t="nodes" class="on">…</button><button data-t="keys">…</button><button data-t="files">…</button>
+<button data-t="users">…</button><button data-t="status">…</button>
+</nav></header>
+<main id="main"><div class="empty">…</div></main>
+<div id="toast"></div>
+<script>
+const tg = window.Telegram.WebApp; tg.ready(); tg.expand();
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let HS_URL = '', tab = 'nodes', state = {}, L = 'en';
+const I18N = {
+ en:{nodes:'Devices',keys:'Keys',files:'Files',users:'Users',status:'Status',reg:'Register a device',reg_hint:'paste the /register/… link from',reg_ph:'https://…/register/mkey:… or mkey:…',reg_btn:'Register',refresh:'Refresh',online:'online',tags_hint:'tag <b>exit</b> = auto-approve exit node, <b>router</b> = subnets',was:'seen',until:'until',host:'host',not_adv:'(not advertised)',name:'Name',tags:'Tags',ip:'IP',exit_on:'Exit ▶ on',exit_off:'Exit ■ off',logout:'Log out',del:'Delete',
+  exit_ask_on:'Make {n} an exit node? The bot runs tailscale set --advertise-exit-node over SSH and approves routes.',exit_ask_off:'Disable exit node on {n}?',exit_done_on:'Exit node enabled',exit_done_off:'Exit node disabled',
+  new_key:'New pre-auth key',reusable:'reusable',hours:'hours',tags_ph:'tags, comma-separated (optional)',create_qr:'Create + QR',key_created:'Key created',once:'single-use',multi:'reusable',share:'📤 Share',instr:'Instructions',cmd:'Command',key_only:'Key only',qr_key:'QR of key',qr_cmd:'QR of command',hide:'Hide',phone_hint:'Phone: Tailscale → Use alternate server → {u} → key.',active_keys:'Active keys',none:'none',used:'used',copy:'Copy',qr:'QR',revoke:'Revoke',revoke_ask:'Revoke this key?',revoked:'Revoked',
+  recv_title:'Receive by ticket (iroh / sendme)',recv_hint:'the bot downloads to the server and sends the file to chat (up to 50 MB)',recv_ph:'blob…  or  sendme receive blob…',recv_btn:'Receive',recv_ok:'Receiving — the result will arrive in chat',share_title:'Share a file',share_hint:'send a document to the bot in chat — it starts <code>sendme send</code> and returns a ticket with QR. Receiver: <code>sendme receive &lt;ticket&gt;</code>',sharing:'Sharing',nothing:'nothing',restart:'Restart',new_ticket:'New ticket',stop_del:'Stop + delete',stop_ask:'Stop sharing and delete {n} from the server?',receiving:'Receiving',
+  new_user_ph:'new user name',create:'Create',created:'Created',del_user_ask:'Delete user {n}? Only if it has no devices.',deleted:'Deleted',new_name:'New name',rename_hint:'New name (a-z, 0-9, -)',renamed:'Renamed',tags_prompt:'Tags, comma-separated (without tag:)',tags_done:'Tags updated',logout_ask:'Log out {n}? The device stays listed; the client must sign in again.',logout_done:'Session reset',del_ask:'Delete {n} from headscale?',route_on:'Route approved',route_off:'Route removed',copied:'Copied',
+  versions:'Versions',upd_hs:'Update headscale → {v}',upd_bot:'Update bot',rollback:'Roll back to {v}',upd_ask_hs:'Update headscale to {v}? Database is backed up first.',upd_ask_bot:'Update the bot? It restarts in ~30 s.',upd_ask_rb:'Roll back headscale to {v}?',upd_started:'Started — the bot will report in chat',uptodate:'Everything is up to date',lang:'Язык: Русский',panel:'Panel'},
+ ru:{nodes:'Узлы',keys:'Ключи',files:'Файлы',users:'Польз.',status:'Статус',reg:'Регистрация узла',reg_hint:'вставь ссылку /register/… из',reg_ph:'https://…/register/mkey:… или mkey:…',reg_btn:'Зарегистрировать',refresh:'Обновить',online:'online',tags_hint:'тег <b>exit</b> = автоодобрение exit-node, <b>router</b> = подсетей',was:'был',until:'до',host:'host',not_adv:'(не анонсируется)',name:'Имя',tags:'Теги',ip:'IP',exit_on:'Exit ▶ вкл',exit_off:'Exit ■ выкл',logout:'Разлогинить',del:'Удалить',
+  exit_ask_on:'Сделать {n} exit-node? Бот выполнит tailscale set --advertise-exit-node по SSH и одобрит маршруты.',exit_ask_off:'Выключить exit-node на {n}?',exit_done_on:'Exit-node включён',exit_done_off:'Exit-node выключен',
+  new_key:'Новый pre-auth ключ',reusable:'многоразовый',hours:'часов',tags_ph:'теги через запятую (необяз.)',create_qr:'Создать + QR',key_created:'Ключ создан',once:'одноразовый',multi:'многоразовый',share:'📤 Скинуть',instr:'Инструкция',cmd:'Команда',key_only:'Ключ',qr_key:'QR ключа',qr_cmd:'QR команды',hide:'Скрыть',phone_hint:'Телефон: Tailscale → Use alternate server → {u} → ключ.',active_keys:'Активные ключи',none:'нет',used:'использован',copy:'Копировать',qr:'QR',revoke:'Отозвать',revoke_ask:'Отозвать ключ?',revoked:'Отозван',
+  recv_title:'Получить по тикету (iroh / sendme)',recv_hint:'бот скачает на сервер и пришлёт файл в чат (до 50 МБ)',recv_ph:'blob…  или  sendme receive blob…',recv_btn:'Принять',recv_ok:'Приём запущен, результат придёт в чат',share_title:'Раздать файл',share_hint:'пришли документ боту в чат — он запустит <code>sendme send</code> и вернёт тикет с QR. Получатель: <code>sendme receive &lt;тикет&gt;</code>',sharing:'Раздаётся',nothing:'ничего',restart:'Перезапуск',new_ticket:'Новый тикет',stop_del:'Стоп+удалить',stop_ask:'Остановить раздачу и удалить {n} с сервера?',receiving:'Приём',
+  new_user_ph:'имя нового пользователя',create:'Создать',created:'Создан',del_user_ask:'Удалить пользователя {n}? Только если у него нет узлов.',deleted:'Удалён',new_name:'Новое имя',rename_hint:'Новое имя (a-z, 0-9, -)',renamed:'Переименован',tags_prompt:'Теги через запятую (без tag:)',tags_done:'Теги обновлены',logout_ask:'Разлогинить {n}? Узел останется в списке, клиенту нужно будет войти заново.',logout_done:'Сессия сброшена',del_ask:'Удалить {n} из Headscale?',route_on:'Маршрут одобрен',route_off:'Маршрут снят',copied:'Скопировано',
+  versions:'Версии',upd_hs:'Обновить headscale → {v}',upd_bot:'Обновить бота',rollback:'Откатить на {v}',upd_ask_hs:'Обновить headscale до {v}? Сначала бэкап базы.',upd_ask_bot:'Обновить бота? Перезапуск ~30 с.',upd_ask_rb:'Откатить headscale на {v}?',upd_started:'Запущено — бот отчитается в чате',uptodate:'Всё актуально',lang:'Language: English',panel:'Панель'}
+};
+const T = (k, v = {}) => (I18N[L][k] ?? I18N.en[k] ?? k).replace(/\{(\w+)\}/g, (_, n) => v[n] ?? '');
+
+function toast(m, ms = 2200) { const t = $('#toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', ms); }
+async function api(path, opts = {}) {
+  const r = await fetch('/tg/api/' + path, { ...opts, headers: { 'Authorization': 'tma ' + tg.initData, 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+  let j = {}; try { j = await r.json(); } catch {}
+  if (!r.ok) throw new Error(j.error || j.detail || ('HTTP ' + r.status));
+  return j;
+}
+const post = (p, b) => api(p, { method: 'POST', body: JSON.stringify(b || {}) });
+const del = p => api(p, { method: 'DELETE' });
+const ask = m => new Promise(res => tg.showConfirm ? tg.showConfirm(m, res) : res(confirm(m)));
+const prompt2 = (m, d = '') => Promise.resolve(prompt(m, d));
+function copy(t) { navigator.clipboard?.writeText(t).then(() => toast(T('copied'))).catch(() => { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast(T('copied')); }); }
+const ago = iso => { if (!iso || iso.startsWith('0001')) return '—'; const s = (Date.now() - new Date(iso)) / 1000; if (s < 60) return L === 'ru' ? 'только что' : 'just now'; if (s < 3600) return Math.floor(s / 60) + (L === 'ru' ? ' мин' : ' min'); if (s < 86400) return Math.floor(s / 3600) + (L === 'ru' ? ' ч' : ' h'); return Math.floor(s / 86400) + (L === 'ru' ? ' д' : ' d'); };
+const fmt = iso => (!iso || iso.startsWith('0001')) ? '—' : new Date(iso).toLocaleString(L === 'ru' ? 'ru' : 'en-GB');
+async function run(fn, okMsg) { try { await fn(); if (okMsg) toast(okMsg); await render(); } catch (e) { tg.showAlert ? tg.showAlert(e.message) : alert(e.message); } }
+
+// ---------------------------------------------------------------- nodes
+async function viewNodes() {
+  const { nodes } = await api('nodes'); state.nodes = nodes;
+  const on = nodes.filter(n => n.online).length;
+  let h = `<div class="card"><div class="row"><div class="grow"><b>${T('reg')}</b><div class="hint">${T('reg_hint')} <code>tailscale up --login-server ${esc(HS_URL)}</code></div></div></div>
+  <div class="row"><input id="regkey" class="grow" placeholder="${T('reg_ph')}"><select id="reguser" style="width:auto">${(state.users || []).map(u => `<option>${esc(u.name)}</option>`).join('')}</select></div>
+  <div class="acts"><button class="b" onclick="regNode()">${T('reg_btn')}</button><button class="b s" onclick="render()">${T('refresh')}</button></div></div>
+  <div class="hint" style="margin:4px 2px 8px">online ${on} / ${nodes.length} · ${T('tags_hint')}</div>`;
+  for (const n of nodes) {
+    const name = n.givenName || n.name, exit = (n.approvedRoutes || []).includes('0.0.0.0/0');
+    const routes = [...new Set([...(n.availableRoutes || []), ...(n.approvedRoutes || [])])];
+    const expired = n.expiry && !n.expiry.startsWith('0001') && new Date(n.expiry) < Date.now();
+    h += `<div class="card"><div class="row"><span class="dot ${n.online ? 'on' : ''}"></span><span class="name grow">${esc(name)}${exit ? ' <span class="tag">exit</span>' : ''}${expired ? ' <span class="tag bad">expired</span>' : ''}</span><span class="hint">#${n.id}</span></div>
+    <div class="hint">${(n.ipAddresses || []).map(esc).join(' · ')}</div>
+    <div class="hint">${esc(n.user?.name)} · ${n.online ? 'online' : T('was') + ' ' + ago(n.lastSeen)} · ${T('until')} ${fmt(n.expiry)}${n.name !== name ? ' · host ' + esc(n.name) : ''}</div>
+    ${(n.tags || []).length ? '<div>' + n.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('') + '</div>' : ''}
+    ${routes.length ? '<div style="margin-top:6px">' + routes.map(r => `<label class="route"><input type="checkbox" ${(n.approvedRoutes || []).includes(r) ? 'checked' : ''} onchange="toggleRoute('${n.id}','${esc(r)}',this.checked)"><span>${esc(r)}</span>${(n.availableRoutes || []).includes(r) ? '' : '<span class="hint">' + T('not_adv') + '</span>'}</label>`).join('') + '</div>' : ''}
+    <div class="acts"><button class="b s" onclick="renameNode('${n.id}','${esc(name)}')">${T('name')}</button><button class="b s" onclick="tagsNode('${n.id}','${esc((n.tags || []).join(','))}')">${T('tags')}</button>
+    <button class="b s" onclick="copy('${esc((n.ipAddresses || [])[0] || '')}')">IP</button>${(state.exitHosts || []).includes(name) ? `<button class="b ${exit ? 's' : ''}" onclick="exitNode('${n.id}','${esc(name)}',${!exit})">${exit ? T('exit_off') : T('exit_on')}</button>` : ''}<button class="b s" onclick="expireNode('${n.id}','${esc(name)}')">${T('logout')}</button><button class="b d" onclick="delNode('${n.id}','${esc(name)}')">${T('del')}</button></div></div>`;
+  }
+  return h;
+}
+window.exitNode = async (id, n, on) => { if (await ask(T(on ? 'exit_ask_on' : 'exit_ask_off', { n }))) run(() => post(`nodes/${id}/exit`, { enable: on }), T(on ? 'exit_done_on' : 'exit_done_off')); };
+window.regNode = () => run(async () => { const key = $('#regkey').value.trim(); if (!key) throw new Error('empty key'); const r = await post('nodes/register', { key, user: $('#reguser').value }); toast('+ ' + (r.node?.givenName || r.node?.name)); });
+window.renameNode = async (id, cur) => { const v = await prompt2(T('rename_hint'), cur); if (v && v !== cur) run(() => post(`nodes/${id}/rename`, { name: v }), T('renamed')); };
+window.tagsNode = async (id, cur) => { const v = await prompt2(T('tags_prompt'), cur.replace(/tag:/g, '')); if (v !== null) run(() => post(`nodes/${id}/tags`, { tags: v.split(',').map(s => s.trim()).filter(Boolean) }), T('tags_done')); };
+window.expireNode = async (id, n) => { if (await ask(T('logout_ask', { n }))) run(() => post(`nodes/${id}/expire`), T('logout_done')); };
+window.delNode = async (id, n) => { if (await ask(T('del_ask', { n }))) run(() => del(`nodes/${id}`), T('deleted')); };
+window.toggleRoute = (id, r, on) => { const n = state.nodes.find(x => x.id === id); let a = new Set(n.approvedRoutes || []); on ? a.add(r) : a.delete(r); run(() => post(`nodes/${id}/routes`, { routes: [...a] }), T(on ? 'route_on' : 'route_off')); };
+
+// ---------------------------------------------------------------- keys
+async function viewKeys() {
+  const users = state.users || (state.users = (await api('users')).users);
+  const uid = state.keyUser || users[0]?.id;
+  const { keys } = await api('keys?uid=' + uid);
+  const alive = keys.filter(k => new Date(k.expiration) > Date.now() && (k.reusable || !k.used));
+  let h = `<div class="card"><b>${T('new_key')}</b>
+  <select id="k_user" onchange="state.keyUser=this.value;render()">${users.map(u => `<option value="${u.id}" ${u.id == uid ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select>
+  <div class="row"><label class="chk"><input type="checkbox" id="k_reuse">${T('reusable')}</label><label class="chk"><input type="checkbox" id="k_eph">ephemeral</label></div>
+  <div class="row"><input id="k_hours" type="number" value="24" style="width:90px"><span class="hint">${T('hours')}</span><input id="k_tags" class="grow" placeholder="${T('tags_ph')}"></div>
+  <div class="acts"><button class="b" onclick="mkKey()">${T('create_qr')}</button></div></div>`;
+  if (state.lastKey) {
+    const k = state.lastKey;
+    h += `<div class="card"><b>${T('key_created')}</b> <span class="hint">${k.key.reusable ? T('multi') : T('once')} · ${T('until')} ${fmt(k.key.expiration)}</span>
+    <img class="qr" src="data:image/png;base64,${k.qr}" alt="QR">
+    <pre>${esc(k.cmd)}</pre>
+    <div class="acts"><button class="b" onclick="shareKey('${esc(k.key.key)}',${!!k.key.reusable},'${esc(k.key.expiration)}')">${T('share')}</button><button class="b s" onclick="copyInvite('${esc(k.key.key)}',${!!k.key.reusable},'${esc(k.key.expiration)}')">${T('instr')}</button><button class="b s" onclick="copy('${esc(k.cmd)}')">${T('cmd')}</button><button class="b s" onclick="copy('${esc(k.key.key)}')">${T('key_only')}</button><button class="b s" onclick="state.showKeyQr=!state.showKeyQr;render()">${state.showKeyQr ? T('qr_cmd') : T('qr_key')}</button><button class="b s" onclick="state.lastKey=null;render()">${T('hide')}</button></div>
+    ${state.showKeyQr ? `<img class="qr" src="data:image/png;base64,${k.qr_key}">` : ''}
+    <div class="hint">${T('phone_hint', { u: esc(HS_URL) })}</div></div>`;
+  }
+  h += `<h3>${T('active_keys')} (${alive.length})</h3>`;
+  if (!alive.length) h += `<div class="empty">${T('none')}</div>`;
+  for (const k of alive) h += `<div class="card"><div class="row"><span class="name grow">${esc(k.key.slice(0, 22))}…</span><span class="hint">#${k.id}</span></div>
+    <div class="hint">${k.reusable ? T('multi') : T('once')}${k.ephemeral ? ' · ephemeral' : ''}${k.used ? ' · ' + T('used') : ''} · ${T('until')} ${fmt(k.expiration)}</div>
+    ${(k.aclTags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('')}
+    <div class="acts"><button class="b" onclick="shareKey('${esc(k.key)}',${!!k.reusable},'${esc(k.expiration)}')">${T('share')}</button><button class="b s" onclick="copyInvite('${esc(k.key)}',${!!k.reusable},'${esc(k.expiration)}')">${T('instr')}</button><button class="b s" onclick="copy('${esc(k.key)}')">${T('key_only')}</button><button class="b s" onclick="showQr('tailscale up --login-server ${esc(HS_URL)} --authkey ${esc(k.key)}')">QR</button><button class="b d" onclick="expKey('${uid}','${esc(k.key)}')">${T('revoke')}</button></div></div>`;
+  return h;
+}
+const invite = (key, reusable, exp) => L === 'ru' ? `Подключение к VPN (Tailscale/Headscale)
+1) Установи Tailscale: https://tailscale.com/download
+2) Компьютер — выполни: tailscale up --login-server ${HS_URL} --authkey ${key}
+3) Телефон — в приложении Tailscale: меню → Use alternate server → ${HS_URL}, затем вход по ключу: ${key}
+Ключ ${reusable ? 'многоразовый' : 'одноразовый'}, действует до ${fmt(exp)}.` : `Connect to VPN (Tailscale/Headscale)
+1) Install Tailscale: https://tailscale.com/download
+2) Computer — run: tailscale up --login-server ${HS_URL} --authkey ${key}
+3) Phone — in the Tailscale app: menu → Use alternate server → ${HS_URL}, then sign in with the key: ${key}
+Key is ${reusable ? 'reusable' : 'single-use'}, valid until ${fmt(exp)}.`;
+window.shareKey = (key, reusable, exp) => { const t = invite(key, reusable, exp); const u = 'https://t.me/share/url?url=' + encodeURIComponent(HS_URL) + '&text=' + encodeURIComponent(t); tg.openTelegramLink ? tg.openTelegramLink(u) : window.open(u); };
+window.copyInvite = (key, reusable, exp) => copy(invite(key, reusable, exp));
+window.mkKey = () => run(async () => { state.lastKey = await post('keys', { user: $('#k_user').value, reusable: $('#k_reuse').checked, ephemeral: $('#k_eph').checked, hours: +$('#k_hours').value || 24, tags: $('#k_tags').value.split(',').map(s => s.trim()).filter(Boolean).map(t => t.startsWith('tag:') ? t : 'tag:' + t) }); });
+window.expKey = async (u, k) => { if (await ask(T('revoke_ask'))) run(() => post('keys/expire', { user: u, key: k }), T('revoked')); };
+window.showQr = t => run(async () => { const { qr } = await post('qr', { text: t }); state.popupQr = qr; });
+
+// ---------------------------------------------------------------- files
+async function viewFiles() {
+  const { shares, receives } = await api('files');
+  let h = `<div class="card"><b>${T('recv_title')}</b><div class="hint">${T('recv_hint')}</div>
+  <textarea id="rt" rows="2" placeholder="${T('recv_ph')}"></textarea><div class="acts"><button class="b" onclick="recv()">${T('recv_btn')}</button><button class="b s" onclick="render()">${T('refresh')}</button></div></div>
+  <div class="card"><b>${T('share_title')}</b><div class="hint">${T('share_hint')}</div></div>`;
+  h += `<h3>${T('sharing')} (${shares.length})</h3>`;
+  if (!shares.length) h += `<div class="empty">${T('nothing')}</div>`;
+  for (const s of shares) h += `<div class="card"><div class="row"><span class="dot ${s.alive ? 'on' : ''}"></span><span class="name grow">${esc(s.name)}</span><span class="hint">${esc(s.human)}</span></div>
+    <pre>${esc(s.ticket || '…')}</pre>
+    <div class="acts"><button class="b" onclick="copy('sendme receive ${esc(s.ticket)}')">${T('copy')}</button><button class="b s" onclick="showQr('${esc(s.ticket)}')">QR</button><button class="b s" onclick="reshare('${esc(s.name)}')">${T('restart')}</button><button class="b d" onclick="stopShare('${esc(s.name)}')">${T('stop_del')}</button></div></div>`;
+  h += `<h3>${T('receiving')} (${receives.length})</h3>`;
+  if (!receives.length) h += `<div class="empty">${T('nothing')}</div>`;
+  for (const r of receives) h += `<div class="card"><div class="row"><span class="${r.state === 'done' ? 'ok' : r.state === 'error' ? 'bad' : 'warn'}">●</span><span class="name grow">${esc(r.ticket)}</span><span class="hint">${esc(r.state)}</span></div>
+    ${r.files.map(f => `<div class="hint">${esc(f.name)} · ${(f.size / 1048576).toFixed(1)} MB</div>`).join('')}${r.error ? `<div class="hint bad">${esc(r.error)}</div>` : ''}
+    <div class="acts"><button class="b d" onclick="delRecv('${r.id}')">${T('del')}</button></div></div>`;
+  return h;
+}
+window.recv = () => run(() => post('files/receive', { ticket: $('#rt').value }), T('recv_ok'));
+window.reshare = n => run(() => post('files/share', { name: n }), T('new_ticket'));
+window.stopShare = async n => { if (await ask(T('stop_ask', { n }))) run(() => post('files/share/stop', { name: n, delete: true }), 'OK'); };
+window.delRecv = id => run(() => post('files/receive/delete', { id }), T('deleted'));
+
+// ---------------------------------------------------------------- users
+async function viewUsers() {
+  const { users } = await api('users'); state.users = users;
+  let h = `<div class="card"><div class="row"><input id="u_new" class="grow" placeholder="${T('new_user_ph')}"><button class="b" onclick="mkUser()">${T('create')}</button></div></div>`;
+  for (const u of users) h += `<div class="card"><div class="row"><span class="name grow">${esc(u.name)}</span><span class="hint">#${u.id} · ${fmt(u.createdAt)}</span></div>
+    <div class="acts"><button class="b s" onclick="renUser('${u.id}','${esc(u.name)}')">${T('name')}</button><button class="b d" onclick="delUser('${u.id}','${esc(u.name)}')">${T('del')}</button></div></div>`;
+  return h;
+}
+window.mkUser = () => run(() => post('users', { name: $('#u_new').value.trim() }), T('created'));
+window.renUser = async (id, cur) => { const v = await prompt2(T('new_name'), cur); if (v && v !== cur) run(() => post(`users/${id}/rename`, { name: v }), 'OK'); };
+window.delUser = async (id, n) => { if (await ask(T('del_user_ask', { n }))) run(() => del(`users/${id}`), T('deleted')); };
+
+// ---------------------------------------------------------------- status
+async function viewStatus() {
+  const st = await api('status');
+  let h = `<div class="card"><pre>${esc(st.text)}</pre><div class="acts"><button class="b s" onclick="render()">${T('refresh')}</button><button class="b s" onclick="setLang()">${T('lang')}</button></div></div>
+  <div class="card"><b>${T('versions')}</b><div class="hint">headscale ${esc(st.headscale)} · latest ${esc(st.latest || '?')} · bot ${esc(st.bot)}</div><div class="acts">`;
+  h += st.update_available ? `<button class="b" onclick="updHs('${esc(st.latest)}')">${T('upd_hs', { v: st.latest })}</button>` : `<span class="hint">${T('uptodate')}</span>`;
+  if (st.prev && st.prev !== st.headscale) h += `<button class="b s" onclick="rbHs('${esc(st.prev)}')">${T('rollback', { v: st.prev })}</button>`;
+  h += `<button class="b s" onclick="updBot()">${T('upd_bot')}</button></div></div>
+  <div class="card hint">${T('panel')}: ${esc(HS_URL)}/tg/</div>`;
+  return h;
+}
+window.updHs = async v => { if (await ask(T('upd_ask_hs', { v }))) run(() => post('update/headscale', { version: v }), T('upd_started')); };
+window.rbHs = async v => { if (await ask(T('upd_ask_rb', { v }))) run(() => post('update/rollback'), T('upd_started')); };
+window.updBot = async () => { if (await ask(T('upd_ask_bot'))) run(() => post('update/bot'), T('upd_started')); };
+window.setLang = () => run(async () => { L = L === 'ru' ? 'en' : 'ru'; await post('lang', { lang: L }); applyNav(); });
+function applyNav() { document.querySelectorAll('nav button').forEach(b => b.textContent = T(b.dataset.t)); }
+
+// ---------------------------------------------------------------- render
+const views = { nodes: viewNodes, keys: viewKeys, files: viewFiles, users: viewUsers, status: viewStatus };
+async function render() {
+  try {
+    if (!state.users) state.users = (await api('users')).users;
+    let h = await views[tab]();
+    if (state.popupQr) { h = `<div class="card"><img class="qr" src="data:image/png;base64,${state.popupQr}"><div class="acts"><button class="b s" onclick="state.popupQr=null;render()">${T('hide')}</button></div></div>` + h; }
+    $('#main').innerHTML = h;
+  } catch (e) { $('#main').innerHTML = `<div class="empty bad">${esc(e.message)}</div>`; }
+}
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => { document.querySelectorAll('nav button').forEach(x => x.classList.remove('on')); b.classList.add('on'); tab = b.dataset.t; state.popupQr = null; render(); });
+(async () => { try { const me = await api('me'); HS_URL = me.hs_url; state.exitHosts = me.exit_hosts || []; L = me.lang || 'en'; applyNav(); await render(); } catch (e) { $('#main').innerHTML = `<div class="empty bad">${esc(e.message)}</div>`; } })();
+</script>
+</body>
+</html>
