@@ -21,8 +21,10 @@ say()  { c "1;36" "▶ $*"; }
 ok()   { c "1;32" "✔ $*"; }
 warn() { c "1;33" "! $*"; }
 die()  { c "1;31" "✖ $*"; exit 1; }
-ask()  { local v; printf "\033[1m%s\033[0m" "$1"; read -r v </dev/tty; echo "$v"; }
-askd() { local v; v=$(ask "$1 [$2]: "); echo "${v:-$2}"; }          # with default
+has_tty() { { : </dev/tty; } 2>/dev/null; }
+ask()  { local v; has_tty || { c "1;31" "✖ no terminal for questions — run interactively or pass the HL_* variables (see header)" >&2; kill $$; exit 1; }
+         printf "\033[1m%s\033[0m" "$1" >/dev/tty; read -r v </dev/tty; echo "$v"; }
+askd() { local v; has_tty || { echo "$2"; return; }; v=$(ask "$1 [$2]: "); echo "${v:-$2}"; }   # with default; no tty → default
 retry() { local n; for n in 1 2 3 4; do "$@" && return 0; warn "attempt $n failed, retrying…"; sleep 5; done; return 1; }
 
 [ "$(id -u)" = 0 ] || die "run as root (sudo -i)"
@@ -112,7 +114,7 @@ else
   HS_USER=${HL_HS_USER:-$(askd "     headscale user that owns new devices/keys" "${DEF_USER:-admin}")}
   echo "$USERS_JSON" | grep -q "\"name\":\"$HS_USER\"" || { $HSCLI users create "$HS_USER" >/dev/null 2>&1 || die "user $HS_USER does not exist"; }
   ok "headscale API ok, user $HS_USER"
-  HEADSCALE_VERSION=$($HSCLI version 2>/dev/null | tr -d '\r' | head -n1 || true)
+  HEADSCALE_VERSION=$($HSCLI version 2>/dev/null | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)
   Q3="3/4"; Q4="4/4"
 fi
 
