@@ -66,7 +66,7 @@ ok "bot @$BOT_USERNAME"
 
 ADMIN_ID=${HL_ADMIN_ID-$(ask "3/3  Your Telegram user ID (Enter to skip — you will claim admin by a link): ")}
 [[ -z "$ADMIN_ID" || "$ADMIN_ID" =~ ^[0-9]+$ ]] || die "ID must be a number"
-CLAIM_CODE=$(tr -dc a-z0-9 </dev/urandom | head -c 10)
+CLAIM_CODE=$(od -An -tx1 -N6 /dev/urandom | tr -d " \n")
 
 LANG_DEFAULT=en
 case "${LANG:-}" in ru*) LANG_DEFAULT=ru;; esac
