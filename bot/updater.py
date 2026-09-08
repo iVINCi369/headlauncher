@@ -105,9 +105,10 @@ def _docker(*args, timeout=60) -> subprocess.CompletedProcess:
     return subprocess.run(["docker", *args], capture_output=True, text=True, timeout=timeout)
 
 
-def oneshot(shell_cmd: str) -> str:
-    """Start a detached docker:cli container running `shell_cmd` in the stack dir; return its id."""
-    p = _docker("run", "-d", "--rm",
+def oneshot(shell_cmd: str, rm: bool = False) -> str:
+    """Start a detached docker:cli container running `shell_cmd` in the stack dir; return its id.
+    rm=False by default: the exit code must survive until wait_oneshot() has read it (it removes the container)."""
+    p = _docker("run", "-d", *(["--rm"] if rm else []), "--label", "headlauncher=oneshot",
                 "-v", "/var/run/docker.sock:/var/run/docker.sock",
                 "-v", f"{STACK}:{STACK}", "-w", str(STACK),
                 CLI_IMAGE, "sh", "-c", shell_cmd)
@@ -117,20 +118,23 @@ def oneshot(shell_cmd: str) -> str:
 
 
 async def wait_oneshot(cid: str, timeout: int = 600) -> tuple[int, str]:
-    """Wait for a --rm container: returns (exit_code, logs). -1 if it vanished."""
+    """Wait for the one-shot container: returns (exit_code, logs) and removes it. -1 if it vanished."""
     deadline = time.time() + timeout
     logs = ""
-    while time.time() < deadline:
-        p = await asyncio.to_thread(_docker, "inspect", "-f", "{{.State.Running}} {{.State.ExitCode}}", cid)
-        if p.returncode != 0:  # removed (--rm) → finished
-            return (0 if "exit0" in logs else -1), logs
-        running, code = p.stdout.split()
+    try:
+        while time.time() < deadline:
+            p = await asyncio.to_thread(_docker, "inspect", "-f", "{{.State.Running}} {{.State.ExitCode}}", cid)
+            if p.returncode != 0:
+                return -1, logs + "\n[container vanished]"
+            running, code = p.stdout.split()
+            if running == "false":
+                lp = await asyncio.to_thread(_docker, "logs", cid)
+                return int(code), (lp.stdout + lp.stderr)[-4000:]
+            await asyncio.sleep(3)
         lp = await asyncio.to_thread(_docker, "logs", cid)
-        logs = (lp.stdout + lp.stderr)[-4000:]
-        if running == "false":
-            return int(code), logs
-        await asyncio.sleep(3)
-    return -2, logs + "\n[timeout]"
+        return -2, (lp.stdout + lp.stderr)[-4000:] + "\n[timeout]"
+    finally:
+        await asyncio.to_thread(_docker, "rm", "-f", cid)
 
 
 async def compose_up(service: str, pull: bool = True) -> tuple[int, str]:
@@ -165,7 +169,7 @@ async def rollback_headscale(health_url: str) -> tuple[bool, str]:
 
 def update_bot_detached():
     """Fire and forget: the bot itself gets recreated by the one-shot container."""
-    return oneshot("sleep 2 && docker compose pull bot && docker compose up -d --no-deps bot")
+    return oneshot("sleep 2 && docker compose pull bot && docker compose up -d --no-deps bot", rm=True)
 
 
 async def _healthy(url: str, timeout: int = 90) -> bool:
