@@ -1,0 +1,15 @@
+{
+  // HeadLauncher default policy: every node sees every node, internet via exit nodes,
+  // and two tags for one-tap approval from the panel.
+  "tagOwners": {
+    "tag:exit":   ["__USER__@"],
+    "tag:router": ["__USER__@"],
+  },
+  "autoApprovers": {
+    "exitNode": ["tag:exit"],
+  },
+  "acls": [
+    { "action": "accept", "src": ["*"], "dst": ["*:*"] },
+    { "action": "accept", "src": ["*"], "dst": ["autogroup:internet:*"] },
+  ],
+}

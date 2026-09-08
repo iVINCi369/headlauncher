@@ -1,0 +1,13 @@
+{$DOMAIN} {
+	encode gzip
+	# Telegram Mini App + bot API
+	handle /tg/* {
+		reverse_proxy bot:8090
+	}
+	# headscale control server (long-polling /ts2021 needs no buffering)
+	handle {
+		reverse_proxy headscale:8080 {
+			flush_interval -1
+		}
+	}
+}

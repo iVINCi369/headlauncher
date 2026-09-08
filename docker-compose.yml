@@ -1,0 +1,53 @@
+# HeadLauncher — headscale + caddy + telegram bot in one stack.
+# Everything configurable lives in .env (written by install.sh).
+services:
+  headscale:
+    image: headscale/headscale:${HEADSCALE_VERSION:-v0.29.3}
+    container_name: hl-headscale
+    restart: unless-stopped
+    command: serve
+    volumes:
+      - ./data/headscale:/var/lib/headscale
+      - ./data/config/headscale.yaml:/etc/headscale/config.yaml:ro
+      - ./data/config/acl.hujson:/etc/headscale/acl.hujson:ro
+    ports:
+      - "3478:3478/udp"        # embedded DERP STUN (helps behind strict NAT / DPI regions)
+    healthcheck:
+      test: ["CMD", "headscale", "health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  caddy:
+    image: caddy:2
+    container_name: hl-caddy
+    restart: unless-stopped
+    environment:
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./data/caddy:/data
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - headscale
+
+  bot:
+    image: ${BOT_IMAGE:-ghcr.io/iVINCi369/headlauncher-bot}:${BOT_VERSION:-latest}
+    build: ./bot
+    container_name: hl-bot
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - HS_API_URL=http://headscale:8080
+      - STACK_DIR=${STACK_DIR:-/opt/headlauncher}
+    volumes:
+      # the stack is mounted at the SAME path as on the host, so `docker compose`
+      # run from inside the bot resolves bind mounts correctly (update module)
+      - ${STACK_DIR:-/opt/headlauncher}:${STACK_DIR:-/opt/headlauncher}
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data/ssh:/root/.ssh:ro          # optional: exit-node control over SSH
+    depends_on:
+      headscale:
+        condition: service_healthy
