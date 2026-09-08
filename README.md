@@ -21,16 +21,28 @@ The installer asks three things — your domain, a bot token from [@BotFather](h
 - **Embedded DERP relay** — works behind strict NAT without relying on public relays.
 - English / Russian, picked from your Telegram language (`/lang` to switch).
 
+## Already running headscale? Attach mode
+
+The same command detects an existing headscale (binary, systemd service or container) and offers to install **only the bot**, plugged into it. It reads `server_url`/`listen_addr` from your config, creates an API key for the bot, asks for the bot token, starts the bot on `127.0.0.1:8090` and — if nginx serves your domain — adds the `location /tg/` block itself (with a backup and `nginx -t`). For Caddy/Traefik it prints the one route you need to add. Your headscale, its database and your ACL are not touched; the *Updates* button then covers only the bot.
+
+Non-interactive:
+
+```
+HL_MODE=attach HL_HS_URL=https://vpn.example.com HL_HS_API_URL=http://127.0.0.1:8080 HL_BOT_TOKEN=… sudo -E bash install.sh
+```
+
 ## Requirements
 
-A Linux server with a public IPv4, ports 80/443 (TCP) and 3478 (UDP) open, and a domain pointing at it. 1 GB RAM is plenty.
+Full mode: a Linux server with a public IPv4, ports 80/443 (TCP) and 3478 (UDP) open, and a domain pointing at it. 1 GB RAM is plenty.
+Attach mode: Docker, a working headscale ≥ 0.23 with its API reachable from the host, and a reverse proxy in front of it.
 
 ## Layout
 
 ```
 /opt/headlauncher
 ├── .env                  # your settings (chmod 600)
-├── docker-compose.yml
+├── docker-compose.yml         # full mode: headscale + caddy + bot
+├── docker-compose.attach.yml  # attach mode: bot only (host network)
 ├── caddy/Caddyfile
 ├── headscale/            # config template + default ACL
 ├── bot/                  # the Telegram bot (Python, aiogram + FastAPI)

@@ -60,7 +60,7 @@ async def latest_headscale() -> str | None:
 
 
 def current_headscale() -> str:
-    return env_read().get("HEADSCALE_VERSION", "?")
+    return env_read().get("HEADSCALE_VERSION") or ("external" if os.environ.get("MODE") == "attach" else "?")
 
 
 def bot_version() -> str:

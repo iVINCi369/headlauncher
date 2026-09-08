@@ -1,0 +1,20 @@
+# HeadLauncher — "attach" mode: only the bot, plugged into a headscale you already run.
+# Selected by COMPOSE_FILE=docker-compose.attach.yml in .env (written by install.sh).
+# host networking: the bot reaches headscale's API on 127.0.0.1 and your existing
+# reverse proxy forwards /tg/ to 127.0.0.1:8090.
+services:
+  bot:
+    image: ${BOT_IMAGE:-ghcr.io/ivinci369/headlauncher-bot}:${BOT_VERSION:-latest}
+    build: ./bot
+    container_name: hl-bot
+    restart: unless-stopped
+    network_mode: host
+    env_file: .env
+    environment:
+      - MODE=attach
+      - LISTEN=${LISTEN:-127.0.0.1:8090}
+      - STACK_DIR=${STACK_DIR:-/opt/headlauncher}
+    volumes:
+      - ${STACK_DIR:-/opt/headlauncher}:${STACK_DIR:-/opt/headlauncher}
+      - /var/run/docker.sock:/var/run/docker.sock   # only for self-update
+      - ./data/ssh:/root/.ssh:ro                    # optional: exit-node control over SSH
