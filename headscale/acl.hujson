@@ -8,6 +8,11 @@
   "autoApprovers": {
     "exitNode": ["tag:exit"],
   },
+  // Tailscale ≥1.102 on iOS/macOS shows an empty exit-node list against headscale
+  // unless the control plane "suggests" one (juanfont/headscale#3415). Harmless otherwise.
+  "nodeAttrs": [
+    { "target": ["*"], "attr": ["suggest-exit-node", "suggest-exit-node-ui"] },
+  ],
   "acls": [
     { "action": "accept", "src": ["*"], "dst": ["*:*"] },
     { "action": "accept", "src": ["*"], "dst": ["autogroup:internet:*"] },
