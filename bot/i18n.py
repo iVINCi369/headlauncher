@@ -82,9 +82,9 @@ STR = {
 }
 
 
-def t(lang: str, key: str, **kw) -> str:
+def t(lang: str, _k: str, **kw) -> str:
     d = STR.get(lang) or STR["en"]
-    s = d.get(key) or STR["en"].get(key) or key
+    s = d.get(_k) or STR["en"].get(_k) or _k
     return s.format(**kw) if kw else s
 
 
