@@ -50,6 +50,8 @@ LISTEN = E("LISTEN", "0.0.0.0:8090")
 SENDME = E("SENDME", "/usr/local/bin/sendme")
 LANG_DEFAULT = E("LANG_DEFAULT", "en")
 CLAIM_CODE = E("CLAIM_CODE", "")
+MODE = E("MODE", "full")            # full = we run headscale; attach = existing headscale, bot only
+MANAGED = MODE != "attach"
 STACK = Path(E("STACK_DIR", "/opt/headlauncher"))
 DATA = Path(E("DATA_DIR", str(STACK / "data" / "bot")))
 FILES = DATA / "files"
@@ -344,9 +346,10 @@ async def api_me(user=Depends(auth)):
 async def api_status(user=Depends(auth)):
     latest = await updater.latest_headscale()
     cur = updater.current_headscale()
-    return {"text": await status_text(lang_of(user)), "headscale": cur, "latest": latest,
-            "update_available": bool(latest and updater.newer(latest, cur)),
-            "prev": updater.env_read().get("HEADSCALE_PREV") or None, "bot": updater.bot_version()}
+    return {"text": await status_text(lang_of(user)), "headscale": cur, "latest": latest, "managed": MANAGED,
+            "update_available": MANAGED and bool(latest and updater.newer(latest, cur)),
+            "prev": (updater.env_read().get("HEADSCALE_PREV") or None) if MANAGED else None,
+            "bot": updater.bot_version()}
 
 
 @app.get("/tg/api/nodes")
@@ -516,12 +519,16 @@ async def api_file_receive_delete(b=Depends(body), user=Depends(auth)):
 
 @app.post("/tg/api/update/headscale")
 async def api_update_hs(b=Depends(body), user=Depends(auth)):
+    if not MANAGED:
+        raise HTTPException(400, "headscale is not managed by HeadLauncher (attach mode)")
     asyncio.create_task(do_update_headscale(int(user["id"]), lang_of(user), b.get("version")))
     return {"ok": True}
 
 
 @app.post("/tg/api/update/rollback")
 async def api_rollback(user=Depends(auth)):
+    if not MANAGED:
+        raise HTTPException(400, "headscale is not managed by HeadLauncher (attach mode)")
     asyncio.create_task(do_rollback(int(user["id"]), lang_of(user)))
     return {"ok": True}
 
@@ -594,11 +601,13 @@ async def update_view(lang):
     prev = updater.env_read().get("HEADSCALE_PREV")
     lines = [t(lang, "upd_title"), t(lang, "upd_hs", cur=cur, latest=latest or "?"), t(lang, "upd_bot", cur=updater.bot_version())]
     rows = []
-    if latest and updater.newer(latest, cur):
+    if not MANAGED:
+        lines.append(t(lang, "upd_external"))
+    elif latest and updater.newer(latest, cur):
         rows.append([InlineKeyboardButton(text=t(lang, "b_upd_hs", v=latest), callback_data="upd_hs_ask")])
     else:
         lines.append(t(lang, "upd_none"))
-    if prev and prev != cur:
+    if MANAGED and prev and prev != cur:
         rows.append([InlineKeyboardButton(text=t(lang, "b_rollback", v=prev), callback_data="upd_rb_ask")])
     rows.append([InlineKeyboardButton(text=t(lang, "b_upd_bot"), callback_data="upd_bot_ask")])
     rows.append([InlineKeyboardButton(text=t(lang, "b_back"), callback_data="menu")])
@@ -747,6 +756,8 @@ async def h_cb(cb: types.CallbackQuery):
         elif d == "update":
             txt, kb = await update_view(lang)
             await send(txt, kb)
+        elif d in ("upd_hs_ask", "upd_hs_go", "upd_rb_ask", "upd_rb_go") and not MANAGED:
+            await send(t(lang, "upd_external"))
         elif d == "upd_hs_ask":
             latest = await updater.latest_headscale()
             await send(t(lang, "upd_ask_hs", cur=updater.current_headscale(), new=latest), confirm(lang, "upd_hs_go"))
