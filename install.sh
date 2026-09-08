@@ -2,6 +2,7 @@
 # HeadLauncher installer: self-hosted Tailscale (headscale) managed from Telegram.
 #   curl -fsSL https://raw.githubusercontent.com/iVINCi369/headlauncher/main/install.sh | bash
 # Asks three things: domain, bot token, (optionally) your Telegram ID. Everything else is buttons.
+# Non-interactive: HL_DOMAIN=… HL_BOT_TOKEN=… HL_ADMIN_ID= bash install.sh
 set -euo pipefail
 
 REPO="${HL_REPO:-https://github.com/iVINCi369/headlauncher.git}"
@@ -48,22 +49,22 @@ fi
 echo
 c "1" "HeadLauncher setup — three questions."
 echo
-DOMAIN=$(ask "1/3  Domain pointing to this server (e.g. vpn.example.com): ")
+DOMAIN=${HL_DOMAIN:-$(ask "1/3  Domain pointing to this server (e.g. vpn.example.com): ")}
 [[ "$DOMAIN" =~ ^[a-zA-Z0-9.-]+$ ]] || die "bad domain"
 PUB_IP=$(curl -fsS -4 https://api.ipify.org || true)
 DNS_IP=$(getent ahostsv4 "$DOMAIN" | awk '{print $1; exit}' || true)
 if [ -n "$PUB_IP" ] && [ "$PUB_IP" != "$DNS_IP" ]; then
   warn "$DOMAIN resolves to '${DNS_IP:-nothing}', this server is $PUB_IP. TLS will fail until DNS is right."
-  [ "$(ask "continue anyway? [y/N] ")" = y ] || exit 1
+  [ -n "${HL_DOMAIN:-}" ] || [ "$(ask "continue anyway? [y/N] ")" = y ] || exit 1
 fi
 
-BOT_TOKEN=$(ask "2/3  Telegram bot token from @BotFather: ")
+BOT_TOKEN=${HL_BOT_TOKEN:-$(ask "2/3  Telegram bot token from @BotFather: ")}
 ME=$(curl -fsS "https://api.telegram.org/bot${BOT_TOKEN}/getMe" || true)
 BOT_USERNAME=$(echo "$ME" | sed -n 's/.*"username":"\([^"]*\)".*/\1/p')
 [ -n "$BOT_USERNAME" ] || die "token rejected by Telegram"
 ok "bot @$BOT_USERNAME"
 
-ADMIN_ID=$(ask "3/3  Your Telegram user ID (Enter to skip — you will claim admin by a link): ")
+ADMIN_ID=${HL_ADMIN_ID-$(ask "3/3  Your Telegram user ID (Enter to skip — you will claim admin by a link): ")}
 [[ -z "$ADMIN_ID" || "$ADMIN_ID" =~ ^[0-9]+$ ]] || die "ID must be a number"
 CLAIM_CODE=$(tr -dc a-z0-9 </dev/urandom | head -c 10)
 
