@@ -16,6 +16,7 @@ ok()   { c "1;32" "✔ $*"; }
 warn() { c "1;33" "! $*"; }
 die()  { c "1;31" "✖ $*"; exit 1; }
 ask()  { local v; printf "\033[1m%s\033[0m" "$1"; read -r v </dev/tty; echo "$v"; }
+retry() { local n; for n in 1 2 3 4; do "$@" && return 0; warn "attempt $n failed, retrying…"; sleep 5; done; return 1; }
 
 [ "$(id -u)" = 0 ] || die "run as root (sudo -i)"
 command -v curl >/dev/null || { apt-get update -qq && apt-get install -y -qq curl; }
@@ -23,18 +24,19 @@ command -v curl >/dev/null || { apt-get update -qq && apt-get install -y -qq cur
 # ---------------------------------------------------------------- docker
 if ! command -v docker >/dev/null; then
   say "Installing Docker"
-  curl -fsSL https://get.docker.com | sh >/dev/null
+  retry sh -c 'curl -fsSL https://get.docker.com | sh >/dev/null' || die "Docker install failed"
 fi
 docker compose version >/dev/null 2>&1 || die "docker compose plugin missing — install docker-compose-plugin"
 command -v git >/dev/null || { apt-get update -qq && apt-get install -y -qq git; }
 
 # ---------------------------------------------------------------- code
+export GIT_TERMINAL_PROMPT=0
 if [ -d "$DIR/.git" ]; then
-  say "Updating $DIR"; git -C "$DIR" pull -q --ff-only
+  say "Updating $DIR"; retry timeout 90 git -C "$DIR" pull -q --ff-only || warn "could not update code (GitHub unreachable) — continuing with the current files"
 elif [ -f "$DIR/docker-compose.yml" ]; then
   warn "using existing files in $DIR (not a git checkout — no auto-update)"
 else
-  say "Cloning into $DIR"; git clone -q -b "$BRANCH" "$REPO" "$DIR"
+  say "Cloning into $DIR"; retry timeout 120 git clone -q -b "$BRANCH" "$REPO" "$DIR" || die "could not clone $REPO"
 fi
 cd "$DIR"
 
