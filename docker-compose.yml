@@ -34,7 +34,7 @@ services:
       - headscale
 
   bot:
-    image: ${BOT_IMAGE:-ghcr.io/iVINCi369/headlauncher-bot}:${BOT_VERSION:-latest}
+    image: ${BOT_IMAGE:-ghcr.io/ivinci369/headlauncher-bot}:${BOT_VERSION:-latest}
     build: ./bot
     container_name: hl-bot
     restart: unless-stopped
