@@ -9,7 +9,7 @@ COPY --from=docker:27-cli /usr/local/libexec/docker/cli-plugins/docker-compose /
 # sendme (iroh) for file transfer
 RUN arch=$( [ "${TARGETARCH:-amd64}" = "arm64" ] && echo aarch64 || echo x86_64 ) \
     && curl -fsSL "https://github.com/n0-computer/sendme/releases/download/${SENDME_VERSION}/sendme-${SENDME_VERSION}-linux-${arch}.tar.gz" \
-       | tar xz -C /usr/local/bin sendme && chmod +x /usr/local/bin/sendme
+       | tar xz -C /usr/local/bin ./sendme && chmod +x /usr/local/bin/sendme
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
